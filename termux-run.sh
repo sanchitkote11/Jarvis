@@ -1,44 +1,43 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
 # ======================================================
-# J.A.R.V.I.S. Voice AI - Termux Setup & Run Script
+# J.A.R.V.I.S. Android & Termux Full-Access Launcher
 # ======================================================
 
 echo "======================================================"
-echo "      J.A.R.V.I.S. Neural Core for Termux (Android)    "
+echo "      J.A.R.V.I.S. Neural Core - Android Package       "
 echo "======================================================"
 
-# 1. Update Termux repositories & install Node.js + Git
-echo "[+] Step 1: Checking dependencies (Node.js & Git)..."
+# 1. Update Termux repositories & install Node.js + Git + Build Tools
+echo "[+] Step 1: Checking dependencies (Node.js, Git, Build Tools)..."
 pkg update -y
-pkg install -y nodejs-lts git python make clang
+pkg install -y nodejs-lts git python make clang openjdk-17
 
 # 2. Verify Node version
 echo "[+] Node.js version: $(node -v)"
 echo "[+] NPM version: $(npm -v)"
 
-# 3. Install dependencies
-echo "[+] Step 2: Installing project dependencies..."
+# 3. Install project dependencies
+echo "[+] Step 2: Installing project dependencies & Capacitor..."
 npm install
+npm install @capacitor/core @capacitor/cli @capacitor/android
 
-# 4. Prompt for API key if missing
-if [ -z "$GEMINI_API_KEY" ]; then
-    echo "------------------------------------------------------"
-    echo "[-] WARNING: GEMINI_API_KEY environment variable is not set."
-    echo "[?] Please enter your Google Gemini API Key (or press Enter to set later):"
-    read -r user_key
-    if [ -n "$user_key" ]; then
-        export GEMINI_API_KEY="$user_key"
-        echo "export GEMINI_API_KEY=\"$user_key\"" >> ~/.bashrc
-        echo "[+] API Key saved to ~/.bashrc"
-    fi
+# 4. Build production web bundle
+echo "[+] Step 3: Building production web bundle..."
+npm run build
+
+# 5. Initialize Capacitor Android
+if [ ! -d "android" ]; then
+    echo "[+] Step 4: Initializing Capacitor Android platform..."
+    npx cap init "JARVIS Voice AI" "com.stark.jarvis" --web-dir dist
+    npx cap add android
 fi
 
-# 5. Build and launch server
-echo "------------------------------------------------------"
-echo "[+] Step 3: Starting J.A.R.V.I.S. Voice Engine on http://localhost:3000..."
-echo "[!] Open Chrome/Brave/Firefox on your Android device and navigate to:"
-echo "    http://localhost:3000"
-echo "------------------------------------------------------"
+npx cap sync android
 
-npm run dev
+echo "------------------------------------------------------"
+echo "[+] SUCCESS: Android project prepared with full device permissions!"
+echo "[!] To compile the APK binary in Termux, run:"
+echo "    cd android && ./gradlew assembleDebug"
+echo "[!] The APK will be saved at: android/app/build/outputs/apk/debug/app-debug.apk"
+echo "------------------------------------------------------"

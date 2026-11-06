@@ -13,6 +13,7 @@ import type { OwnerProfile } from './ownerMemory';
 import './visual';
 import './visual-3d';
 import './waveform';
+import { musicEngine } from './musicEngine';
 
 @customElement('gdm-live-audio')
 export class GdmLiveAudio extends LitElement {
@@ -1021,6 +1022,130 @@ export class GdmLiveAudio extends LitElement {
       color: #38bdf8;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
+
+    /* Mobile & Tablet Responsiveness Protocols */
+    @media (max-width: 768px) {
+      .header-bar {
+        top: 0.75rem;
+        left: 0.75rem;
+        right: 0.75rem;
+        flex-direction: row;
+        align-items: center;
+      }
+
+      .brand-badge {
+        padding: 0.35rem 0.75rem;
+        gap: 0.4rem;
+      }
+
+      .brand-title {
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+      }
+
+      .meta-subtitle {
+        font-size: 0.65rem;
+      }
+
+      .hud-actions {
+        gap: 0.4rem;
+      }
+
+      .hud-btn {
+        padding: 0.38rem 0.65rem;
+        font-size: 0.72rem;
+      }
+
+      .controls {
+        bottom: 7vh;
+        gap: 14px;
+      }
+
+      .action-btn {
+        width: 56px;
+        height: 56px;
+      }
+
+      #status {
+        bottom: 2.5vh;
+        font-size: 0.76rem;
+      }
+
+      .thinking-drawer {
+        top: 4.2rem;
+        right: 0.5rem;
+        left: 0.5rem;
+        width: auto;
+        max-width: none;
+        max-height: 55vh;
+      }
+
+      .memory-modal {
+        width: 100vw;
+        height: 94vh;
+        max-height: none;
+        border-radius: 14px;
+      }
+
+      .modal-header {
+        padding: 0.9rem 1rem;
+      }
+
+      .modal-body {
+        padding: 0.9rem 1rem;
+      }
+
+      .telemetry-grid {
+        grid-template-columns: 1fr;
+        gap: 0.6rem;
+      }
+
+      .drive-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+      }
+
+      .drive-sub-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .header-bar {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      .brand-badge {
+        padding: 0.3rem 0.6rem;
+      }
+
+      .brand-title {
+        font-size: 0.75rem;
+      }
+
+      .meta-subtitle {
+        display: none;
+      }
+
+      .hud-btn span:not(.counter-pill) {
+        font-size: 0.7rem;
+      }
+
+      .drive-toast {
+        top: 4rem;
+        width: 90vw;
+        font-size: 0.7rem;
+        padding: 0.35rem 0.8rem;
+      }
+
+      .action-btn {
+        width: 52px;
+        height: 52px;
+      }
+    }
   `;
 
   constructor() {
@@ -1049,6 +1174,33 @@ export class GdmLiveAudio extends LitElement {
     this.driveToastTimeout = setTimeout(() => {
       this.driveToastMessage = '';
     }, 2800);
+  }
+
+  private checkMusicCommand(text: string) {
+    const lower = text.toLowerCase();
+    if (
+      lower.includes('play music') ||
+      lower.includes('play song') ||
+      lower.includes('play beats') ||
+      lower.includes('play ambient') ||
+      lower.includes('play jazz') ||
+      lower.includes('play rock') ||
+      lower.includes('play chill') ||
+      lower.includes('play stark')
+    ) {
+      if (lower.includes('jazz')) musicEngine.playMusic('jazz');
+      else if (lower.includes('rock') || lower.includes('beats')) musicEngine.playMusic('rock');
+      else if (lower.includes('chill') || lower.includes('relax')) musicEngine.playMusic('chill');
+      else musicEngine.playMusic('ambient');
+      this.triggerDriveToast('Music playback executed via voice command');
+    } else if (
+      lower.includes('stop music') ||
+      lower.includes('stop playing') ||
+      lower.includes('stop song')
+    ) {
+      musicEngine.stopMusic();
+      this.triggerDriveToast('Music playback terminated');
+    }
   }
 
   private initAudio() {
@@ -1095,6 +1247,7 @@ export class GdmLiveAudio extends LitElement {
             // User speech transcription handling: buffer and save to Memory Drive
             if (message.inputTranscript) {
               this.pendingUserSpeech = message.inputTranscript;
+              this.checkMusicCommand(message.inputTranscript);
               ownerMemory.recordInteraction(message.inputTranscript);
               ownerMemory.triggerCognitiveCycle('analyzing', message.inputTranscript);
 
@@ -1373,6 +1526,8 @@ export class GdmLiveAudio extends LitElement {
 
     this.quickChatText = '';
     this.isSendingText = true;
+
+    this.checkMusicCommand(query);
 
     // Immediately record to Memory Drive
     ownerMemory.recordChatMessage('user', query, { isVoice: false });
