@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {vs as sphereVertexShader} from './sphere-shader';
 import {backdropVertexShader, backdropFragmentShader} from './backdrop-shader';
 import {Analyser} from './analyser';
+import type {WeatherTheme} from './weatherColors';
 
 export class Visual3D {
   private renderer: THREE.WebGLRenderer;
@@ -14,8 +15,17 @@ export class Visual3D {
   private sphere: THREE.Mesh;
   private coreMesh: THREE.Mesh;
   private ringMesh: THREE.Mesh;
+  private pointLight1: THREE.PointLight;
+  private pointLight2: THREE.PointLight;
   private clock: THREE.Clock;
   private analyser?: Analyser;
+
+  private targetAccentColor = new THREE.Color(0x38bdf8);
+  private targetCoreColor = new THREE.Color(0x0284c7);
+  private targetEmissiveColor = new THREE.Color(0x0284c7);
+  private targetLight1Color = new THREE.Color(0x38bdf8);
+  private targetLight2Color = new THREE.Color(0x2563eb);
+  private targetRingColor = new THREE.Color(0x60a5fa);
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -100,15 +110,24 @@ export class Visual3D {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     this.scene.add(ambientLight);
 
-    const pointLight1 = new THREE.PointLight(0x38bdf8, 3, 50);
-    pointLight1.position.set(5, 5, 5);
-    this.scene.add(pointLight1);
+    this.pointLight1 = new THREE.PointLight(0x38bdf8, 3, 50);
+    this.pointLight1.position.set(5, 5, 5);
+    this.scene.add(this.pointLight1);
 
-    const pointLight2 = new THREE.PointLight(0x2563eb, 2, 50);
-    pointLight2.position.set(-5, -5, 5);
-    this.scene.add(pointLight2);
+    this.pointLight2 = new THREE.PointLight(0x2563eb, 2, 50);
+    this.pointLight2.position.set(-5, -5, 5);
+    this.scene.add(this.pointLight2);
 
     window.addEventListener('resize', this.onResize.bind(this));
+  }
+
+  public setWeatherTheme(theme: WeatherTheme) {
+    this.targetAccentColor.setHex(theme.accentHex);
+    this.targetCoreColor.setHex(theme.coreHex);
+    this.targetEmissiveColor.setHex(theme.emissiveHex);
+    this.targetLight1Color.setHex(theme.light1Hex);
+    this.targetLight2Color.setHex(theme.light2Hex);
+    this.targetRingColor.setHex(theme.ringHex);
   }
 
   setAnalyser(analyser: Analyser) {
@@ -158,16 +177,27 @@ export class Visual3D {
     this.sphere.scale.setScalar(targetScale);
     this.coreMesh.scale.setScalar(targetScale * 0.95);
 
-    // Dynamic color pulsing based on active state
+    // Dynamic color pulsing and smooth weather theme lerping
+    const lerpSpeed = 0.045;
+    const sphereMat = this.sphere.material as THREE.MeshStandardMaterial;
+    const coreMat = this.coreMesh.material as THREE.MeshBasicMaterial;
+    const ringMat = this.ringMesh.material as THREE.MeshBasicMaterial;
+
+    sphereMat.color.lerp(this.targetAccentColor, lerpSpeed);
+    coreMat.color.lerp(this.targetCoreColor, lerpSpeed);
+    ringMat.color.lerp(this.targetRingColor, lerpSpeed);
+    this.pointLight1.color.lerp(this.targetLight1Color, lerpSpeed);
+    this.pointLight2.color.lerp(this.targetLight2Color, lerpSpeed);
+
     if (isRecording) {
-      (this.sphere.material as THREE.MeshStandardMaterial).emissive.setHex(0x38bdf8);
-      (this.sphere.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.8 + intensity * 0.5;
+      sphereMat.emissive.lerp(this.targetAccentColor, lerpSpeed);
+      sphereMat.emissiveIntensity = 0.85 + intensity * 0.5;
     } else if (isThinking) {
-      (this.sphere.material as THREE.MeshStandardMaterial).emissive.setHex(0x60a5fa);
-      (this.sphere.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.5 + pulse * 0.4;
+      sphereMat.emissive.lerp(new THREE.Color(0x818cf8), lerpSpeed);
+      sphereMat.emissiveIntensity = 0.55 + pulse * 0.4;
     } else {
-      (this.sphere.material as THREE.MeshStandardMaterial).emissive.setHex(0x0284c7);
-      (this.sphere.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.4;
+      sphereMat.emissive.lerp(this.targetEmissiveColor, lerpSpeed);
+      sphereMat.emissiveIntensity = 0.42;
     }
 
     (this.backdropMesh.material as THREE.ShaderMaterial).uniforms.time.value = time;

@@ -2,11 +2,14 @@ import {LitElement, html, css} from 'lit';
 import {customElement, property, query, state} from 'lit/decorators.js';
 import {Visual3D} from './visual-3d';
 import {Analyser} from './analyser';
+import {atmosphericHum} from './ambientHum';
+import {getWeatherTheme} from './weatherColors';
 
 @customElement('gdm-live-audio-visuals')
 export class GdmLiveAudioVisuals extends LitElement {
   @property({type: Boolean}) isThinking = false;
   @property({type: Boolean}) isRecording = false;
+  @property({type: String}) weatherCondition = '';
   @property({attribute: false}) inputNode: AudioNode | null = null;
   @property({attribute: false}) outputNode: AudioNode | null = null;
 
@@ -33,6 +36,7 @@ export class GdmLiveAudioVisuals extends LitElement {
       --glow-scale: 1;
       --glow-color: rgba(56, 189, 248, 0.4);
       --core-color: rgba(14, 165, 233, 0.6);
+      --ring-color: rgba(96, 165, 250, 0.7);
     }
 
     canvas {
@@ -54,6 +58,22 @@ export class GdmLiveAudioVisuals extends LitElement {
       transform: translate(-50%, -50%);
       pointer-events: none;
       z-index: 1;
+      transition: filter 0.2s ease, transform 0.2s ease;
+    }
+
+    .glow-viewport-center.audio-active {
+      animation: orb-viewport-audio-pulse 1.15s infinite ease-in-out;
+    }
+
+    @keyframes orb-viewport-audio-pulse {
+      0%, 100% {
+        transform: translate(-50%, -50%) scale(1);
+        filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.4));
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.08);
+        filter: drop-shadow(0 0 50px rgba(56, 189, 248, 0.9)) drop-shadow(0 0 85px rgba(14, 165, 233, 0.6));
+      }
     }
 
     /* 1. Primary Pulsating Radial Aura */
@@ -64,11 +84,11 @@ export class GdmLiveAudioVisuals extends LitElement {
       width: 380px;
       height: 380px;
       border-radius: 50%;
-      background: radial-gradient(circle, var(--glow-color) 0%, rgba(37, 99, 235, 0.25) 45%, rgba(2, 6, 23, 0) 75%);
+      background: radial-gradient(circle, var(--glow-color) 0%, var(--core-color, rgba(37, 99, 235, 0.25)) 45%, rgba(2, 6, 23, 0) 75%);
       filter: blur(28px);
       transform: translate(-50%, -50%) scale(calc(var(--glow-scale) * 1.05));
       animation: orb-pulse-breathe 2.4s infinite ease-in-out;
-      transition: transform 0.08s ease-out, background 0.2s ease;
+      transition: transform 0.08s ease-out, background 0.4s ease;
       opacity: calc(0.45 + var(--audio-volume) * 0.55);
     }
 
@@ -80,11 +100,12 @@ export class GdmLiveAudioVisuals extends LitElement {
       width: 320px;
       height: 320px;
       border-radius: 50%;
-      border: 1.5px solid rgba(56, 189, 248, 0.6);
-      box-shadow: 0 0 25px rgba(56, 189, 248, 0.5), inset 0 0 25px rgba(56, 189, 248, 0.3);
+      border: 1.5px solid var(--ring-color, rgba(56, 189, 248, 0.6));
+      box-shadow: 0 0 25px var(--glow-color), inset 0 0 25px var(--core-color);
       transform: translate(-50%, -50%);
       animation: orb-ring-expand 3s infinite linear;
       opacity: calc(0.3 + var(--audio-volume) * 0.7);
+      transition: border-color 0.4s ease, box-shadow 0.4s ease;
     }
 
     .orb-pulse-ring-2 {
@@ -94,10 +115,11 @@ export class GdmLiveAudioVisuals extends LitElement {
       width: 320px;
       height: 320px;
       border-radius: 50%;
-      border: 1px dashed rgba(96, 165, 250, 0.7);
+      border: 1px dashed var(--ring-color, rgba(96, 165, 250, 0.7));
       transform: translate(-50%, -50%);
       animation: orb-ring-expand 3s infinite linear 1.5s;
       opacity: calc(0.25 + var(--audio-volume) * 0.75);
+      transition: border-color 0.4s ease;
     }
 
     /* 3. Dynamic Rotating Arc Halo */
@@ -201,18 +223,27 @@ export class GdmLiveAudioVisuals extends LitElement {
     }
 
     this.audioVolume = volume;
+    atmosphericHum.updateVoiceIntensity(this.isRecording ? Math.min(volume * 2.5, 1.0) : 0, this.isThinking);
 
     // Reactively update CSS custom properties based on real-time audio volume
     const glowScale = 1 + (this.isRecording ? volume * 0.7 : (this.isThinking ? 0.15 : volume * 0.3));
     this.style.setProperty('--audio-volume', volume.toFixed(3));
     this.style.setProperty('--glow-scale', glowScale.toFixed(3));
 
+    const theme = getWeatherTheme(this.weatherCondition);
+    if (this.engine) {
+      this.engine.setWeatherTheme(theme);
+    }
+
+    this.style.setProperty('--core-color', theme.coreColor);
+    this.style.setProperty('--ring-color', theme.ringColor);
+
     if (this.isRecording) {
-      this.style.setProperty('--glow-color', 'rgba(56, 189, 248, 0.65)');
+      this.style.setProperty('--glow-color', theme.glowColor);
     } else if (this.isThinking) {
-      this.style.setProperty('--glow-color', 'rgba(129, 140, 248, 0.65)');
+      this.style.setProperty('--glow-color', 'rgba(129, 140, 248, 0.7)');
     } else {
-      this.style.setProperty('--glow-color', 'rgba(14, 165, 233, 0.35)');
+      this.style.setProperty('--glow-color', theme.glowColor);
     }
 
     if (this.engine) {
@@ -226,7 +257,7 @@ export class GdmLiveAudioVisuals extends LitElement {
   render() {
     return html`
       <!-- Dynamic Ambient Glow Rings reacting to audio volume -->
-      <div class="glow-viewport-center">
+      <div class="glow-viewport-center ${this.audioVolume > 0.03 || this.isRecording ? 'audio-active' : ''}">
         <div class="orb-ambient-glow-core"></div>
         <div class="orb-pulse-ring-1"></div>
         <div class="orb-pulse-ring-2"></div>

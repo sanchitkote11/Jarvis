@@ -270,9 +270,18 @@ const DEFAULT_PROFILE: OwnerProfile = {
 class OwnerMemoryEngine {
   private profile: OwnerProfile;
   private listeners: Set<() => void> = new Set();
+  private environmentalContext = '';
 
   constructor() {
     this.profile = this.loadProfile();
+  }
+
+  public setEnvironmentalContext(context: string) {
+    this.environmentalContext = context;
+  }
+
+  public getEnvironmentalContext(): string {
+    return this.environmentalContext;
   }
 
   public subscribe(listener: () => void): () => void {
@@ -827,7 +836,8 @@ ${memoriesList}
 BEHAVIORAL DIRECTIVES:
 - Adapt immediately to the owner's communication style.
 - If the owner instructs you to remember something or expresses a preference, confirm in 4 words or less (e.g., "Committed to memory drive, Sir.").
-- MUSIC CONTROL CAPABILITY: If the owner asks to play music, play a song, play beats, play ambient, rock, jazz, chill, or Stark protocol music, acknowledge briskly ("Playing Stark ambient music, Sir.") and execute. If asked to stop music, acknowledge and stop.`;
+- MUSIC CONTROL CAPABILITY: If the owner asks to play music, play a song, play beats, play ambient, rock, jazz, chill, or Stark protocol music, acknowledge briskly ("Playing Stark ambient music, Sir.") and execute. If asked to stop music, acknowledge and stop.
+- ENVIRONMENTAL CONTEXT & CLIMATE: You have real-time atmospheric sensor access: "${this.environmentalContext || 'Sensors calibrated and active.'}". If the owner asks about the current weather, temperature, or outside conditions, report this environmental context accurately and concisely.`;
   }
 }
 

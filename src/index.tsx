@@ -14,6 +14,8 @@ import './visual';
 import './visual-3d';
 import './waveform';
 import { musicEngine } from './musicEngine';
+import { atmosphericHum } from './ambientHum';
+import { getWeatherTheme } from './weatherColors';
 
 @customElement('gdm-live-audio')
 export class GdmLiveAudio extends LitElement {
@@ -21,6 +23,7 @@ export class GdmLiveAudio extends LitElement {
   @state() status = '';
   @state() error = '';
   @state() isThinking = false;
+  @state() isAudioActive = false;
   @state() showThinkingPanel = false;
   @state() showMemoryModal = false;
   @state() showMemoryDriveModal = false;
@@ -37,6 +40,19 @@ export class GdmLiveAudio extends LitElement {
   @state() quickChatText = '';
   @state() isSendingText = false;
   @state() driveToastMessage = '';
+  @state() batteryLevel: number | null = null;
+  @state() isBatteryCharging = false;
+  @state() weatherData: {
+    condition: string;
+    icon: string;
+    temp: number;
+    humidity?: number;
+    wind?: number;
+    city?: string;
+  } | null = null;
+  @state() weatherLoading = false;
+  @state() geoPermissionStatus: 'idle' | 'prompt' | 'granted' | 'denied' = 'idle';
+  @state() isHumActive = !atmosphericHum.isMutedState();
   private driveToastTimeout?: any;
 
   private client!: GoogleGenAI;
@@ -154,6 +170,113 @@ export class GdmLiveAudio extends LitElement {
       color: #60a5fa;
       letter-spacing: 0.05em;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      display: flex;
+      align-items: center;
+    }
+
+    .battery-pill {
+      font-size: 0.68rem;
+      color: #34d399;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      padding: 0.05rem 0.35rem;
+      border-radius: 999px;
+      margin-left: 0.4rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .weather-overlay-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.35rem 0.8rem;
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      border-radius: 9999px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 4px 18px rgba(2, 6, 23, 0.6), 0 0 14px rgba(14, 165, 233, 0.22);
+      color: #e0f2fe;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .weather-overlay-badge:hover {
+      background: rgba(14, 116, 144, 0.35);
+      border-color: #38bdf8;
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
+      transform: translateY(-1px);
+    }
+
+    .weather-overlay-badge.loading {
+      animation: weather-pulse 1.4s infinite ease-in-out;
+      border-color: rgba(96, 165, 250, 0.6);
+    }
+
+    @keyframes weather-pulse {
+      0%, 100% { opacity: 0.75; transform: scale(0.98); }
+      50% { opacity: 1; transform: scale(1.02); }
+    }
+
+    .weather-overlay-icon {
+      font-size: 1rem;
+      line-height: 1;
+      filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.5));
+    }
+
+    .weather-overlay-temp {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: #38bdf8;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .weather-overlay-cond {
+      color: #93c5fd;
+      font-size: 0.72rem;
+      font-weight: 500;
+    }
+
+    .weather-overlay-city {
+      color: #64748b;
+      font-size: 0.7rem;
+      font-weight: 400;
+    }
+
+    .weather-pill {
+      font-size: 0.68rem;
+      color: #38bdf8;
+      background: rgba(14, 165, 233, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 0.05rem 0.45rem;
+      border-radius: 999px;
+      margin-left: 0.4rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .weather-pill.sync-btn {
+      cursor: pointer;
+      color: #93c5fd;
+      border-color: rgba(96, 165, 250, 0.35);
+      background: rgba(30, 58, 138, 0.3);
+      font-family: inherit;
+    }
+
+    .weather-pill.sync-btn:hover {
+      color: #ffffff;
+      border-color: #38bdf8;
+      background: rgba(14, 165, 233, 0.35);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
     }
 
     .hud-actions {
@@ -206,6 +329,18 @@ export class GdmLiveAudio extends LitElement {
       border-color: #38bdf8;
     }
 
+    .hud-btn.hum-btn {
+      border-color: rgba(99, 102, 241, 0.4);
+      background: rgba(15, 23, 42, 0.85);
+    }
+
+    .hud-btn.hum-btn.active {
+      border-color: rgba(129, 140, 248, 0.8);
+      background: rgba(49, 46, 129, 0.65);
+      color: #e0e7ff;
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.45);
+    }
+
     .counter-pill {
       background: rgba(37, 99, 235, 0.4);
       border: 1px solid rgba(96, 165, 250, 0.5);
@@ -220,6 +355,12 @@ export class GdmLiveAudio extends LitElement {
       background: rgba(14, 165, 233, 0.35);
       border-color: rgba(56, 189, 248, 0.6);
       color: #38bdf8;
+    }
+
+    .counter-pill.active-pill {
+      background: rgba(99, 102, 241, 0.45);
+      border-color: rgba(165, 180, 252, 0.7);
+      color: #e0e7ff;
     }
 
     /* Drive Notification Toast */
@@ -257,6 +398,146 @@ export class GdmLiveAudio extends LitElement {
       background: #38bdf8;
       box-shadow: 0 0 10px #38bdf8;
       animation: pulse 1s infinite alternate;
+    }
+
+    /* Main Orb Container & Audio-Reactive CSS Animation */
+    .main-orb-container {
+      position: absolute;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 0;
+      transition: filter 0.3s ease-out, transform 0.3s ease-out;
+    }
+
+    /* Ambient base aura for the orb container */
+    .main-orb-container::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 500px;
+      height: 500px;
+      border-radius: 50%;
+      transform: translate(-50%, -50%) scale(0.92);
+      background: var(--orb-idle-radial-bg, radial-gradient(circle, rgba(56, 189, 248, 0.22) 0%, rgba(37, 99, 235, 0.12) 42%, rgba(2, 6, 23, 0) 72%));
+      filter: blur(45px);
+      pointer-events: none;
+      animation: orb-container-idle 3.5s infinite ease-in-out;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Outer pulsating energy ring in response to audio activity */
+    .main-orb-container::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 440px;
+      height: 440px;
+      border-radius: 50%;
+      border: 1.5px solid transparent;
+      transform: translate(-50%, -50%) scale(0.85);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease, transform 0.3s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    /* Live Audio API Active Response Pulsing & Glowing Animation */
+    .main-orb-container.active-audio::before {
+      background: var(--orb-radial-bg, radial-gradient(circle, rgba(56, 189, 248, 0.6) 0%, rgba(14, 165, 233, 0.42) 35%, rgba(37, 99, 235, 0.22) 58%, rgba(2, 6, 23, 0) 75%));
+      animation: orb-container-audio-pulse 1.15s infinite ease-in-out;
+    }
+
+    .main-orb-container.active-audio::after {
+      border-color: var(--orb-ring-border, rgba(56, 189, 248, 0.65));
+      box-shadow: 0 0 35px var(--orb-glow-shadow, rgba(56, 189, 248, 0.55)), inset 0 0 30px var(--orb-glow-shadow, rgba(56, 189, 248, 0.35));
+      animation: orb-container-ring-pulse 1.15s infinite ease-in-out;
+      opacity: 1;
+    }
+
+    .main-orb-container.active-audio gdm-live-audio-visuals {
+      animation: orb-audio-glow-surge 1.15s infinite ease-in-out;
+    }
+
+    /* Thinking State Pulsing Animation */
+    .main-orb-container.thinking::before {
+      background: radial-gradient(circle, rgba(168, 85, 247, 0.48) 0%, rgba(99, 102, 241, 0.32) 36%, rgba(56, 189, 248, 0.16) 58%, rgba(2, 6, 23, 0) 75%);
+      filter: blur(40px);
+      animation: orb-container-thinking-pulse 1.6s infinite ease-in-out;
+    }
+
+    @keyframes orb-container-idle {
+      0%, 100% {
+        transform: translate(-50%, -50%) scale(0.9);
+        opacity: 0.65;
+        filter: blur(42px);
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.06);
+        opacity: 0.9;
+        filter: blur(50px);
+      }
+    }
+
+    @keyframes orb-container-audio-pulse {
+      0% {
+        transform: translate(-50%, -50%) scale(0.96);
+        opacity: 0.82;
+        filter: blur(30px) drop-shadow(0 0 25px rgba(56, 189, 248, 0.7));
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.38);
+        opacity: 1;
+        filter: blur(48px) drop-shadow(0 0 80px rgba(56, 189, 248, 1)) drop-shadow(0 0 120px rgba(14, 165, 233, 0.7));
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(0.96);
+        opacity: 0.82;
+        filter: blur(30px) drop-shadow(0 0 25px rgba(56, 189, 248, 0.7));
+      }
+    }
+
+    @keyframes orb-container-ring-pulse {
+      0% {
+        transform: translate(-50%, -50%) scale(0.85);
+        opacity: 0.9;
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.28);
+        opacity: 0.4;
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(0.85);
+        opacity: 0.9;
+      }
+    }
+
+    @keyframes orb-container-thinking-pulse {
+      0%, 100% {
+        transform: translate(-50%, -50%) scale(0.94);
+        opacity: 0.75;
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.24);
+        opacity: 1;
+        filter: blur(48px) drop-shadow(0 0 55px rgba(168, 85, 247, 0.9));
+      }
+    }
+
+    @keyframes orb-audio-glow-surge {
+      0%, 100% {
+        filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.4));
+        transform: scale(1);
+      }
+      50% {
+        filter: drop-shadow(0 0 55px rgba(56, 189, 248, 0.95)) drop-shadow(0 0 90px rgba(14, 165, 233, 0.65));
+        transform: scale(1.045);
+      }
     }
 
     /* Bottom Status & Controls */
@@ -1155,10 +1436,180 @@ export class GdmLiveAudio extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this.initBattery();
+    this.initGeolocationAndWeather();
     this.unsubscribeMemory = ownerMemory.subscribe(() => {
       this.profile = { ...ownerMemory.getProfile() };
       this.requestUpdate();
     });
+
+    const unlockHum = () => {
+      atmosphericHum.start();
+      window.removeEventListener('click', unlockHum);
+      window.removeEventListener('touchstart', unlockHum);
+      window.removeEventListener('keydown', unlockHum);
+    };
+    window.addEventListener('click', unlockHum, { once: true });
+    window.addEventListener('touchstart', unlockHum, { once: true });
+    window.addEventListener('keydown', unlockHum, { once: true });
+  }
+
+  private initBattery() {
+    if ('navigator' in window && 'getBattery' in navigator) {
+      (navigator as any).getBattery().then((battery: any) => {
+        const update = () => {
+          this.batteryLevel = Math.round(battery.level * 100);
+          this.isBatteryCharging = battery.charging;
+        };
+        update();
+        battery.addEventListener('levelchange', update);
+        battery.addEventListener('chargingchange', update);
+      }).catch(() => {});
+    }
+  }
+
+  private async initGeolocationAndWeather() {
+    if (!('geolocation' in navigator)) {
+      this.geoPermissionStatus = 'denied';
+      return;
+    }
+
+    if ('permissions' in navigator && (navigator.permissions as any).query) {
+      try {
+        const status = await (navigator.permissions as any).query({ name: 'geolocation' });
+        this.geoPermissionStatus = status.state;
+        status.onchange = () => {
+          this.geoPermissionStatus = status.state;
+          if (status.state === 'granted') {
+            this.fetchCoordinatesAndWeather();
+          }
+        };
+        if (status.state === 'granted') {
+          this.fetchCoordinatesAndWeather();
+          return;
+        }
+      } catch (_) {}
+    }
+
+    // Attempt initial permission request
+    this.fetchCoordinatesAndWeather();
+  }
+
+  private async fetchWeatherForCoords(lat: number, lon: number, fallbackCity = '') {
+    try {
+      const res = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m`
+      );
+      if (!res.ok) throw new Error('Weather API error');
+      const data = await res.json();
+      const current = data.current;
+      const code = current?.weather_code ?? 0;
+      const { condition, icon } = this.mapWeatherCode(code);
+      const temp = Math.round(current?.temperature_2m ?? 20);
+      const humidity = current?.relative_humidity_2m;
+      const wind = current?.wind_speed_10m;
+
+      let city = fallbackCity;
+      if (!city) {
+        try {
+          const geoRes = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
+          );
+          if (geoRes.ok) {
+            const geoData = await geoRes.json();
+            city = geoData.locality || geoData.city || geoData.principalSubdivision || '';
+          }
+        } catch (_) {}
+      }
+
+      this.weatherData = {
+        condition,
+        icon,
+        temp,
+        humidity,
+        wind,
+        city,
+      };
+
+      const envStr = `${icon} ${temp}°C, ${condition}${city ? ` in ${city}` : ''} (Humidity: ${humidity}%, Wind: ${wind} km/h)`;
+      ownerMemory.setEnvironmentalContext(envStr);
+      ownerMemory.addThought({
+        id: 't-env-' + Date.now(),
+        timestamp: new Date().toLocaleTimeString(),
+        category: 'perception',
+        content: `[ATMOSPHERIC TELEMETRY] Environmental context updated: ${envStr}.`,
+        source: 'cognitive_matrix',
+      });
+      this.triggerDriveToast(`Weather updated: ${icon} ${temp}°C ${condition}${city ? ` (${city})` : ''}`);
+    } catch (err) {
+      console.warn('Weather fetch error', err);
+    } finally {
+      this.weatherLoading = false;
+      this.requestUpdate();
+    }
+  }
+
+  private async fallbackIpWeather() {
+    try {
+      const ipRes = await fetch('https://ipapi.co/json/');
+      if (ipRes.ok) {
+        const ipData = await ipRes.json();
+        if (ipData.latitude && ipData.longitude) {
+          await this.fetchWeatherForCoords(ipData.latitude, ipData.longitude, ipData.city || ipData.region);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    try {
+      const bdcRes = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=en');
+      if (bdcRes.ok) {
+        const bdcData = await bdcRes.json();
+        if (bdcData.latitude && bdcData.longitude) {
+          await this.fetchWeatherForCoords(bdcData.latitude, bdcData.longitude, bdcData.locality || bdcData.city);
+          return;
+        }
+      }
+    } catch (_) {}
+
+    await this.fetchWeatherForCoords(40.7128, -74.0060, 'Local Sector');
+  }
+
+  private fetchCoordinatesAndWeather() {
+    this.weatherLoading = true;
+    this.requestUpdate();
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          this.geoPermissionStatus = 'granted';
+          await this.fetchWeatherForCoords(pos.coords.latitude, pos.coords.longitude);
+        },
+        async (err) => {
+          console.warn('Geolocation permission error, falling back to IP geo:', err);
+          this.geoPermissionStatus = 'denied';
+          await this.fallbackIpWeather();
+        },
+        { timeout: 8000, enableHighAccuracy: false }
+      );
+    } else {
+      this.fallbackIpWeather();
+    }
+  }
+
+  private mapWeatherCode(code: number): { condition: string; icon: string } {
+    if (code === 0) return { condition: 'Clear Sky', icon: '☀️' };
+    if (code === 1) return { condition: 'Mainly Clear', icon: '🌤️' };
+    if (code === 2) return { condition: 'Partly Cloudy', icon: '⛅' };
+    if (code === 3) return { condition: 'Overcast', icon: '☁️' };
+    if (code === 45 || code === 48) return { condition: 'Foggy', icon: '🌫️' };
+    if (code >= 51 && code <= 57) return { condition: 'Drizzle', icon: '🌧️' };
+    if (code >= 61 && code <= 67) return { condition: 'Rain', icon: '🌧️' };
+    if (code >= 71 && code <= 77) return { condition: 'Snow', icon: '❄️' };
+    if (code >= 80 && code <= 82) return { condition: 'Showers', icon: '🌦️' };
+    if (code >= 85 && code <= 86) return { condition: 'Snow Showers', icon: '🌨️' };
+    if (code >= 95) return { condition: 'Thunderstorm', icon: '⛈️' };
+    return { condition: 'Fair', icon: '🌤️' };
   }
 
   disconnectedCallback() {
@@ -1200,7 +1651,41 @@ export class GdmLiveAudio extends LitElement {
     ) {
       musicEngine.stopMusic();
       this.triggerDriveToast('Music playback terminated');
+    } else if (
+      lower.includes('weather') ||
+      lower.includes('forecast') ||
+      lower.includes('climate') ||
+      lower.includes('temperature outside')
+    ) {
+      this.fetchCoordinatesAndWeather();
+    } else if (
+      lower.includes('mute hum') ||
+      lower.includes('stop hum') ||
+      lower.includes('turn off hum') ||
+      lower.includes('silence hum') ||
+      lower.includes('drone off')
+    ) {
+      if (this.isHumActive) {
+        this.handleToggleHum();
+      }
+    } else if (
+      lower.includes('turn on hum') ||
+      lower.includes('start hum') ||
+      lower.includes('play hum') ||
+      lower.includes('drone on') ||
+      lower.includes('unmute hum') ||
+      lower.includes('enable hum')
+    ) {
+      if (!this.isHumActive) {
+        this.handleToggleHum();
+      }
     }
+  }
+
+  private handleToggleHum() {
+    const active = atmosphericHum.toggleMute();
+    this.isHumActive = active;
+    this.triggerDriveToast(`Atmospheric Sub-Bass Hum: ${active ? 'ACTIVE (58Hz Resonance)' : 'MUTED'}`);
   }
 
   private initAudio() {
@@ -1235,6 +1720,7 @@ export class GdmLiveAudio extends LitElement {
             // Check for model internal self-thinking
             if (message.thought) {
               this.isThinking = true;
+              atmosphericHum.updateVoiceIntensity(0, true);
               ownerMemory.addThought({
                 id: 't-' + Math.random().toString(36).slice(2, 7),
                 timestamp: new Date().toLocaleTimeString(),
@@ -1289,6 +1775,7 @@ export class GdmLiveAudio extends LitElement {
             for (const part of parts) {
               if (part.inlineData?.data) {
                 this.isThinking = false;
+                atmosphericHum.updateVoiceIntensity(0, false);
                 ownerMemory.triggerCognitiveCycle('synthesizing', message.outputTranscript);
 
                 // Synchronous decoding eliminates microtask race conditions
@@ -1310,11 +1797,15 @@ export class GdmLiveAudio extends LitElement {
                 source.connect(this.outputNode);
                 source.addEventListener('ended', () => {
                   this.sources.delete(source);
+                  if (this.sources.size === 0) {
+                    this.isAudioActive = false;
+                  }
                 });
 
                 source.start(this.nextStartTime);
                 this.nextStartTime += audioBuffer.duration;
                 this.sources.add(source);
+                this.isAudioActive = true;
               }
             }
 
@@ -1325,6 +1816,7 @@ export class GdmLiveAudio extends LitElement {
                 try { source.stop(); } catch (_) {}
               }
               this.sources.clear();
+              this.isAudioActive = false;
               this.nextStartTime = this.outputAudioContext.currentTime;
             }
 
@@ -1410,12 +1902,14 @@ export class GdmLiveAudio extends LitElement {
 
         const pcm16k = resampleTo16k(rawPcm, this.inputAudioContext.sampleRate);
 
+        let energy = 0;
+        for (let i = 0; i < pcm16k.length; i++) {
+          energy += pcm16k[i] * pcm16k[i];
+        }
+        const rms = Math.sqrt(energy / pcm16k.length);
+        atmosphericHum.updateVoiceIntensity(Math.min(rms * 4.5, 1.0), this.isThinking);
+
         if (this.sources.size > 0) {
-          let energy = 0;
-          for (let i = 0; i < pcm16k.length; i++) {
-            energy += pcm16k[i] * pcm16k[i];
-          }
-          const rms = Math.sqrt(energy / pcm16k.length);
           if (rms < 0.035) {
             return;
           }
@@ -1430,6 +1924,8 @@ export class GdmLiveAudio extends LitElement {
 
       this.isRecording = true;
       this.isThinking = true;
+      atmosphericHum.start();
+      atmosphericHum.updateVoiceIntensity(0, true);
       ownerMemory.triggerCognitiveCycle('listening');
       this.updateStatus(`Listening to ${this.profile.title}... Logging to Memory Drive`);
     } catch (err: any) {
@@ -1445,6 +1941,7 @@ export class GdmLiveAudio extends LitElement {
 
     this.updateStatus('Processing neural intake...');
     this.isRecording = false;
+    atmosphericHum.updateVoiceIntensity(0, this.isThinking);
 
     if (this.scriptProcessorNode && this.sourceNode && this.inputAudioContext) {
       try { this.scriptProcessorNode.disconnect(); } catch (_) {}
@@ -1635,6 +2132,11 @@ export class GdmLiveAudio extends LitElement {
     this.triggerDriveToast(`Drive continuous logging: ${enabled ? 'ENABLED' : 'PAUSED'}`);
   }
 
+  private getOrbWeatherStyle(): string {
+    const theme = getWeatherTheme(this.weatherData?.condition);
+    return `--orb-idle-radial-bg: ${theme.radialGradient}; --orb-radial-bg: ${theme.radialGradient}; --orb-ring-border: ${theme.ringColor}; --orb-glow-shadow: ${theme.glowColor};`;
+  }
+
   render() {
     const filteredHistory = this.driveSearchQuery.trim()
       ? this.profile.chatHistory.filter((m) =>
@@ -1651,9 +2153,24 @@ export class GdmLiveAudio extends LitElement {
               <span class="arc-reactor-dot ${this.isRecording ? 'active' : ''}"></span>
               <span class="brand-title">J.A.R.V.I.S.</span>
             </div>
+
+            <!-- Top-Left Geolocation Weather Overlay Widget -->
+            <button
+              class="weather-overlay-badge ${this.weatherLoading ? 'loading' : ''}"
+              @click=${() => this.fetchCoordinatesAndWeather()}
+              title="${this.weatherData
+                ? `Local Weather: ${this.weatherData.condition}, ${this.weatherData.temp}°C, Humidity: ${this.weatherData.humidity || 'N/A'}%${this.weatherData.city ? ` in ${this.weatherData.city}` : ''} • Click to refresh`
+                : 'Click to sync local weather'}">
+              <span class="weather-overlay-icon">${this.weatherData ? this.weatherData.icon : (this.weatherLoading ? '🛰️' : '🌤️')}</span>
+              <span class="weather-overlay-temp">${this.weatherData ? `${this.weatherData.temp}°C` : (this.weatherLoading ? 'Syncing...' : 'Sync Weather')}</span>
+              ${this.weatherData?.condition ? html`<span class="weather-overlay-cond">${this.weatherData.condition}</span>` : ''}
+              ${this.weatherData?.city ? html`<span class="weather-overlay-city">• ${this.weatherData.city}</span>` : ''}
+            </button>
+
             <div class="brand-meta">
               <span class="meta-subtitle">
-                ${this.isRecording ? 'STATUS: VOCAL STREAM ACTIVE' : (this.status || 'STATUS: ONLINE')}
+                <span>${this.isRecording ? 'STATUS: VOCAL STREAM ACTIVE' : (this.status || 'STATUS: ONLINE')}</span>
+                ${this.batteryLevel !== null ? html`<span class="battery-pill">⚡ ${this.batteryLevel}%${this.isBatteryCharging ? ' 🔌' : ''}</span>` : ''}
               </span>
             </div>
           </div>
@@ -1704,6 +2221,21 @@ export class GdmLiveAudio extends LitElement {
               </svg>
               <span>Owner Memory</span>
               <span class="counter-pill">${this.profile.behaviors.length}</span>
+            </button>
+
+            <!-- Atmospheric Hum Loop Button -->
+            <button
+              class="hud-btn hum-btn ${this.isHumActive ? 'active' : ''}"
+              @click=${() => this.handleToggleHum()}
+              title="Toggle Atmospheric Sub-Bass Hum (58Hz Deep Resonance Loop)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+                ${this.isHumActive
+                  ? html`<path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>`
+                  : html`<line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>`}
+              </svg>
+              <span>${this.isHumActive ? 'Hum' : 'Hum Muted'}</span>
+              <span class="counter-pill ${this.isHumActive ? 'active-pill' : ''}">58Hz</span>
             </button>
           </div>
         </div>
@@ -2381,6 +2913,14 @@ export class GdmLiveAudio extends LitElement {
                               <span class="tile-label">Response Velocity</span>
                               <span class="tile-value" style="font-size: 0.95rem; color: #34d399;">~1-2s (Rapid Protocol)</span>
                             </div>
+                            <div class="telemetry-tile">
+                              <span class="tile-label">Atmospheric Telemetry (Weather)</span>
+                              <span class="tile-value" style="font-size: 0.92rem; color: #38bdf8;">
+                                ${this.weatherData
+                                  ? `${this.weatherData.icon} ${this.weatherData.temp}°C • ${this.weatherData.condition}`
+                                  : (this.weatherLoading ? '🛰️ Syncing...' : 'Standby (Sync Climate)')}
+                              </span>
+                            </div>
                           </div>
                         `
                       : ''}
@@ -2448,12 +2988,17 @@ export class GdmLiveAudio extends LitElement {
 
         <div id="status">${this.error || this.status}</div>
 
-        <!-- 3D Audio Visualizer Orb -->
-        <gdm-live-audio-visuals
-          .inputNode=${this.inputNode}
-          .outputNode=${this.outputNode}
-          .isRecording=${this.isRecording}
-          .isThinking=${this.isThinking}></gdm-live-audio-visuals>
+        <!-- Main Orb Container with Audio-Reactive CSS Animation & Weather-Themed Glow -->
+        <div
+          class="main-orb-container ${this.isRecording || this.isAudioActive || this.sources.size > 0 ? 'active-audio' : ''} ${this.isThinking ? 'thinking' : ''}"
+          style="${this.getOrbWeatherStyle()}">
+          <gdm-live-audio-visuals
+            .inputNode=${this.inputNode}
+            .outputNode=${this.outputNode}
+            .isRecording=${this.isRecording}
+            .isThinking=${this.isThinking}
+            .weatherCondition=${this.weatherData?.condition || ''}></gdm-live-audio-visuals>
+        </div>
 
         <!-- Canvas-based Waveform & Audio Frequency Visualizer -->
         <gdm-waveform-visualizer
